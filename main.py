@@ -1,3 +1,5 @@
+#!/usr/local/bin/python
+# -*- coding: utf-8 -*-
 __author__ = "Giacomo Bergami"
 __copyright__ = "Copyright 2023"
 __credits__ = ["Giacomo Bergami"]
@@ -115,6 +117,8 @@ class LineNos:
         for m in re.finditer(end, string):
             self.line.append(m.end())
             self.startsAt.append(m.start())
+        self.line.append(len(string)+1)
+        self.startsAt.append(self.line[-1])
 
     def startsFrom(self, lineno):
         return self.startsAt[lineno]
@@ -122,8 +126,8 @@ class LineNos:
     def __call__(self, *args, **kwargs):
         d = dict()
         for key, value in kwargs.items():
-            a = getattr(value, key)
-            d[key] = next(i for i in range(len(self.line)) if self.line[i] > a())
+            a = getattr(value, key)()
+            d[key] = next(i for i in range(len(self.line)) if self.line[i] > a)
         return d
 
 class Generalizer:
@@ -184,7 +188,9 @@ class Description:
     def toLatex(self,filename,functionName):
         return (self.description +
                 "\n\n\lstinputlisting[firstline ="+
-                str(self.begin["lineno"])+
+                str(self.begin["lineno"]+2)+
+        ",firstnumber ="+
+                str(self.begin["lineno"]+2)+
                 ", lastline = "+
                 str(self.end.beginline)+
                 ",caption={"+
@@ -192,9 +198,9 @@ class Description:
                 " in "+
                 filename+
                 ", line "+
-                str(self.begin["lineno"])+
+                str(self.begin["lineno"]+2)+
                 " onwards.},label={"+
-                self.sliceName+"}]{"+
+                self.sliceName+"},literate = {§}{{2}}1,basicstyle=\\ttfamily]{"+
                 filename+
                 "}\n\n")
 
@@ -229,7 +235,7 @@ class FunctionMatch:
         for x in self.blocks:
             l.append(self.blocks[x])
         l.sort(key=lambda x:x.begin["lineno"])
-        return "\n".join(map(lambda x : x.toLatex(filename,self.name), l))
+        return ("\\section{"+self.name+"}") + "\n".join(map(lambda x : x.toLatex(filename,self.name), l))
 
 
 def processGeneralMatch(ls, selecter):
@@ -275,6 +281,30 @@ def matcher2(functionRemarking, filename, grouper, grouper2, lam, lam2):
 
 def files_reading(filenames, latexfile):
     with open(latexfile, 'w') as latex:
+        latex.write("\\documentclass{book}\n\\usepackage{xcolor}\n\\usepackage{listingsutf8}\\usepackage{fbb}\\usepackage{inconsolata}\n")
+        latex.write("""
+  \lstset{  
+    breaklines=true,
+    basicstyle=\\footnotesize,
+    keywordstyle=\\color{blue},
+    commentstyle=\\color{green}\\textit,
+    numbers=left,
+    numberstyle=\\footnotesize,
+    stringstyle=\color{red},
+    showspaces = false,
+    showstringspaces = false,
+    tabsize = 2,
+    %numbers=left,
+    %numbersyle=\\tiny
+    frame=single,
+    xleftmargin=5pt,
+    xrightmargin=3pt,
+    language =  C++,
+    aboveskip = 20pt,
+    rulecolor=\\color{black}
+  }
+        """)
+        latex.write("\\begin{document}\n")
         files = dict()
         for filename in filenames:
             with open(filename, 'r') as file:
@@ -282,18 +312,22 @@ def files_reading(filenames, latexfile):
         descriptionBlockOfCodeInFunction = PairMatch(regex_open_description, regex_close_description, files)
         functionRemarking = PairMatch(regex_open_function, regex_close_function, files)
         for filename in files:
+            latex.write("\\chapter{")
+            latex.write(filename)
+            latex.write("}\n")
             declaredFunctionsBegin = matcher(functionRemarking, filename, processGeneralMatch, lambda x: x["name"][0])
             blocksOfCode = matcher2(descriptionBlockOfCodeInFunction, filename, processDescriptionMatch, processGeneralMatch, lambda x: x["name"][0], lambda x: x["commento"][0])
             if (len(declaredFunctionsBegin)>0) and (len(blocksOfCode)>0):
                 for k,v in declaredFunctionsBegin.items():
                     v.retrieveRelevantBlocks(blocksOfCode)
                     latex.write(v.toLatex(filename))
+        latex.write("\\end{document}")
 
 def file_crawling(dirs, exts, latexfile):
     import os
     L = []
     for dir in dirs:
-        for root, dirs, files in os.walk(dirs):
+        for root, dirs, files in os.walk(dir):
             for file in files:
                 for ext in exts:
                     if file.endswith(ext):
@@ -315,5 +349,3 @@ if __name__ == '__main__':
 
 
 
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
